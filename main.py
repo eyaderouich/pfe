@@ -18,7 +18,7 @@ import re
 import traceback
 import os                                                             
                                                                       
-                                                                      
+                                                               
 def get_video_name(video_path):                                       
     return os.path.basename(video_path) 
     
