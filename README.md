@@ -10,11 +10,11 @@
 # How to use sphinx doc:
 
 ## To run Sphinx:
-    - pip install sphinx
-    - mkdir docs && cd docs
-    - sphinx-quickstart
-    - ./make.bat html 
+    $ pip install sphinx
+    $ mkdir docs && cd docs
+    $ sphinx-quickstart
+    $ ./make.bat html 
 
 ## To run Sphinx code coverage:
-    - pytest --cov=.
+    $ pytest --cov=.
 
