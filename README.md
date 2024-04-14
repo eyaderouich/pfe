@@ -1,10 +1,10 @@
 # Car detection and classification one shot
 
 # TO_DO List:
-[x] Test d'integration
-[x] Dashboard
-[x] Diagrammes&flowcharts
-[] Code coverage
+- [x] Test d'integration
+- [x] Dashboard
+- [x] Diagrammes&flowcharts
+- [] Code coverage
 
 
 # How to use sphinx doc:
