@@ -4,7 +4,7 @@
 - [x] Test d'integration
 - [x] Dashboard
 - [x] Diagrammes&flowcharts
-- [] Code coverage
+- [X] Code coverage
 
 
 # How to use sphinx doc:
