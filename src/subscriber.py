@@ -1,16 +1,23 @@
+from fuzzywuzzy import fuzz
 import json
 import csv
 import paho.mqtt.client as mqtt
 import os
 import sys
-from fuzzywuzzy import fuzz
+import subprocess
+import json
+import configparser
+
+"""Lecture de fihcier de configuration de broker"""
+config = configparser.ConfigParser()
+config.read('subbroker.cfg')
 
 """Adresse et port du broker MQTT"""
-broker_address = "127.0.0.1"
-broker_port = 1883
+broker_address = config.get('Broker', 'broker_address')
+broker_port = config.getint('Broker', 'broker_port')
 
 """ Sujet MQTT sur lequel écouter les données des véhicules"""
-topic = "vehicle_data"
+topic = config.get('Broker', 'topic')
 
 """ Dossier où sauvegarder les fichiers CSV"""
 csv_folder = "csv_files"
@@ -73,17 +80,22 @@ def write_to_csv(data, csv_file, msg):
         msg (obj): Objet représentant le message MQTT reçu.
     """
     last_registration = get_last_registration(csv_file.name)
-    current_registration = data['registration']
-    sort_ratio = fuzz.token_sort_ratio(last_registration, current_registration)
+    if csv_file and hasattr(csv_file, 'name'):
+        last_registration = get_last_registration(csv_file.name)
+        current_registration = data['registration']
+        sort_ratio = fuzz.token_sort_ratio(last_registration, current_registration)
 
-    threshold = 45
-    if sort_ratio < threshold:
-        with open(csv_file.name, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([data['class'], data['classificators'][0]['color'], data['classificators'][0]['make'],
-                             data['classificators'][0]['model'], current_registration, data['classificators'][0]['country']])
-        print(f"Received message on topic '{msg.topic}': {msg.payload.decode()}")  
-        print("Data written to CSV successfully") 
+        threshold = 45
+        if sort_ratio < threshold:
+            with open(csv_file.name, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([data['class'], data['classificators'][0]['color'], data['classificators'][0]['make'],
+                                 data['classificators'][0]['model'], current_registration, data['classificators'][0]['country']])
+            print(f"Received message on topic '{msg.topic}': {msg.payload.decode()}")  
+            print("Data written to CSV successfully") 
+    else:
+        print("CSV file is not initialized yet.")
+ 
 
 def start_streamlit(video_name):
     """
@@ -92,7 +104,6 @@ def start_streamlit(video_name):
     Args:
         video_name (str): Nom de la vidéo pour laquelle le tableau de bord est lancé.
     """
-    import subprocess
     subprocess.Popen(["streamlit", "run", "dashboard.py", "--", video_name])
 
 def on_message(client, userdata, msg):
@@ -118,7 +129,7 @@ def on_message(client, userdata, msg):
         else:
             print(f"Received message on topic '{msg.topic}': {msg.payload.decode()}")
     except Exception as e:
-        print("Error processing JSON data:", e)
+        print(e)
 
 def on_connect(client, userdata, flags, rc):
     """
@@ -147,4 +158,5 @@ client.on_message = on_message
 
 """Se connecter au broker MQTT et démarrer la boucle de réception des messages"""
 client.connect(broker_address, broker_port, 60)
+client.loop_forever()
 
