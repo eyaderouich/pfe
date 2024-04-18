@@ -8,7 +8,6 @@ import torch
 from torchvision import transforms, models
 from torch import nn
 from PIL import Image
-import torchvision
 import paho.mqtt.client as mqtt
 from torchvision.models import resnet50
 import sys
@@ -16,9 +15,21 @@ import cv2 as cv
 import pytesseract
 import re
 import traceback
-import os
+import os                                                                                                                                  
+import configparser
 
 
+"""Lecture de fihcier de configuration de broker"""
+broker_cfg = configparser.ConfigParser()
+broker_cfg.read('broker.cfg')
+
+"""Adresse et port du broker MQTT"""
+broker_address = broker_cfg.get('Broker', 'broker_address')
+broker_port = broker_cfg.getint('Broker', 'broker_port')
+
+""" Sujet MQTT sur lequel écouter les données des véhicules"""
+topic = broker_cfg.get('Broker', 'topic')   
+                                                                  
 def get_video_name(video_path):
     """
     Obtient le nom de la vidéo à partir du chemin du fichier.
@@ -28,14 +39,13 @@ def get_video_name(video_path):
         
     Returns:
         str: Le nom de la vidéo.
-    """
-    return os.path.basename(video_path)
-
-
-confThreshold = 0.5
-nmsThreshold = 0.4
-inpWidth = 416
-inpHeight = 416
+    """        
+    return os.path.basename(video_path) 
+    
+confThreshold = 0.5  
+nmsThreshold = 0.4  
+inpWidth = 416  
+inpHeight = 416  
 
 classesFile = "classes.names"
 classes = None
@@ -44,10 +54,10 @@ try:
         classes = f.read().rstrip('\n').split('\n')
 except FileNotFoundError as e:
     print(f"Error: Classes file '{classesFile}' not found: {e}")
+    sys.exit(1)
 
-
-modelConfiguration = "../src/darknet-yolov3.cfg"
-modelWeights = "../src/model.weights"
+modelConfiguration = "./darknet-yolov3.cfg"
+modelWeights = "./model.weights"
 
 try:
     net = cv.dnn.readNetFromDarknet(modelConfiguration, modelWeights)
@@ -55,8 +65,7 @@ try:
     net.setPreferableTarget(cv.dnn.DNN_TARGET_CPU)
 except cv.error as e:
     print(f"Error loading model: {e}")
-   
-
+    sys.exit(1)
 
 def getOutputsNames(net):
     """
@@ -72,23 +81,27 @@ def getOutputsNames(net):
         layerNames = net.getLayerNames()
         return [layerNames[i - 1] for i in net.getUnconnectedOutLayers()]
     except Exception as e:
-        print("Erreur lors de la récupération des noms de sortie:", e)
-
+        print("Error retrieving output names:", e)
+class ModelLoader:
+    """
+    Classe pour charger les modèles une fois et les réutiliser dans le code.
+    """
+    def __init__(self, num_classes=2):
+        self.resnet_model = resnet50(pretrained=True)
+        in_features = self.resnet_model.fc.in_features
+        self.resnet_model.fc = nn.Linear(in_features, num_classes)
 
 class VehicleClassifier(nn.Module):
     """
     Classe pour le classificateur de véhicules.
     """
-    def __init__(self, num_classes=2):
+    def __init__(self, model_loader):
         super(VehicleClassifier, self).__init__()
-        self.resnet50 = resnet50(pretrained=True)
-        in_features = self.resnet50.fc.in_features
-        self.resnet50.fc = nn.Linear(in_features, num_classes)
+        self.resnet50 = model_loader.resnet_model
 
     def forward(self, x):
         return self.resnet50(x)
-
-
+    
 def preprocess_vehicle_region(vehicle_region):
     """
     Prétraite la région du véhicule pour la classification.
@@ -113,19 +126,18 @@ def preprocess_vehicle_region(vehicle_region):
         image = image.unsqueeze(0)
         return image
     except Exception as e:
-        print("Erreur lors du prétraitement de la région du véhicule:", e)
-
+        print("Error during vehicle region preprocessing:", e)
 
 class_names = {0: "France", 1: "Espagne"}
 
 try:
-    model = VehicleClassifier(num_classes=2)
-    model.load_state_dict(torch.load("../src/Nationality.pth"))
+    model_loader = ModelLoader(num_classes=2) 
+    model = VehicleClassifier(model_loader)  
+    model.load_state_dict(torch.load("Nationality.pth"))
     model.eval()
 except Exception as e:
-    print(f"Erreur lors du chargement du modèle de classification de nationalité : {e}")
-    
-
+    print(f"Error loading nationality classification model: {e}")
+    sys.exit()
 
 def matricule(frame, outs, width_factor=1.1, height_factor=1.0):
     """
@@ -187,8 +199,10 @@ def matricule(frame, outs, width_factor=1.1, height_factor=1.0):
                 model.eval()
                 predictions = model(input_tensor)
                 predicted_class = torch.argmax(predictions).item()
-                c = class_names.get(predicted_class, "Inconnu")
-    
+                c = class_names.get(predicted_class, "Unknown")
+            if os.path.exists("plate_temp.jpg"):
+                os.remove("plate_temp.jpg")
+
             custom_config = r'--oem 3 --psm 6'
             text = pytesseract.image_to_string(plate, config=custom_config)
             cleaned_text = re.sub(r'[^A-Z0-9]', '', text)
@@ -196,10 +210,9 @@ def matricule(frame, outs, width_factor=1.1, height_factor=1.0):
             if cleaned_text:
                 return cleaned_text, c
 
-        return "Non detecte", "Inconnu"
+        return "Not detected", "Unknown"
     except Exception as e:
-        print("Erreur lors de la détection de la plaque d'immatriculation:", e)
-
+        print("Error during license plate detection:", e)
 
 class VehicleCounter:
     """
@@ -208,9 +221,9 @@ class VehicleCounter:
     def __init__(self, video_path):
         try:
             self.video_name = get_video_name(video_path) 
-            self.broker_address = "127.0.0.1"
-            self.broker_port = 1883
-            self.topic = "vehicle_data"
+            self.broker_address = broker_address 
+            self.broker_port = broker_port
+            self.topic = topic
             self.mqtt_client = mqtt.Client()
             self.tracker = EuclideanDistTracker()
             self.cam = cv2.VideoCapture(video_path)
@@ -225,7 +238,17 @@ class VehicleCounter:
             np.random.seed(42)
             self.colors = np.random.randint(0, 255, size=(len(self.classNames), 3), dtype='uint8')
         except Exception as e:
-            print("Erreur lors de la lecture du fichier de classes:", e)
+            print("Error reading class file:", e)
+            
+    def cleanup(self):
+        """
+        Nettoie les ressources utilisées, comme les captures vidéo OpenCV.
+        """
+        try:
+            self.cam.release()
+            cv2.destroyAllWindows()
+        except Exception as e:
+            print("Error during cleanup:", e)
             
     def send_video_name(self):
         """
@@ -235,8 +258,7 @@ class VehicleCounter:
             video_name_json = json.dumps({"video_name": self.video_name})  
             self.publish_json_to_mqtt(video_name_json)  
         except Exception as e:
-            print("Erreur lors de l'envoi du nom de la vidéo:", e)
-            
+            print("Error sending video name:", e)
     def publish_video_end_message(self):
         """
         Envoie le message de fin de la vidéo au serveur MQTT.
@@ -245,7 +267,7 @@ class VehicleCounter:
            video_end_message = json.dumps({"video_status": "finished"})
            self.publish_json_to_mqtt(video_end_message)
         except Exception as e:
-           print("Erreur lors de l'envoi du message de fin de vidéo :", e)
+           print("Error sending end of video message :", e)
 
     def publish_json_to_mqtt(self, json_data):
         """
@@ -256,10 +278,10 @@ class VehicleCounter:
         """
         try:
             self.mqtt_client.connect(self.broker_address, self.broker_port, 60)
-            self.mqtt_client.publish(self.topic, json_data, qos=0)
+            self.mqtt_client.publish(self.topic, json_data, qos=0, retain=True)
             self.mqtt_client.disconnect()
         except Exception as e:
-            print("Erreur lors de l'initialisation:", e)
+            print("Error during initialization:", e)
             traceback.print_exc()
             
     def process_video(self):
@@ -284,7 +306,7 @@ class VehicleCounter:
 
                          closest_vehicle = postProcess(outputs, frame, self.colors, self.classNames, self.confThreshold, self.nmsThreshold,
                                             self.required_class_index, self.tracker)
-                         json_data = None  # Initialisation de json_data à None
+                         json_data = None  
                          if closest_vehicle:
                              cv2.imwrite("screenshot.jpg", frame)
                              with torch.no_grad():
@@ -309,7 +331,7 @@ class VehicleCounter:
                                  }
 
                              json_output = json.dumps(json_data, indent=4)
-                             if c != "Inconnu" and m != "Non detecte":
+                             if c != "Unknown" and m != "Not detected":
                                  print(json_output)
                                  self.publish_json_to_mqtt(json_output)
                                  print("Message sent")
@@ -325,7 +347,7 @@ class VehicleCounter:
                      self.publish_video_end_message()
                      break
          except Exception as e:
-          print(f"Erreur lors du traitement de la vidéo : {e}")
+          print(f"Error during video processing : {e}")
 
 
 if __name__ == "__main__":
@@ -335,4 +357,8 @@ if __name__ == "__main__":
 
     video_path = sys.argv[1]
     vc = VehicleCounter(video_path)
-    vc.process_video()
+    try:
+       vc.process_video()
+    finally:
+       vc.cleanup()
+
