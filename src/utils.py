@@ -1,8 +1,6 @@
 import math
-import os
 import cv2
 import numpy as np
-from collections import Counter
 import torch
 from torchvision import transforms, models
 from torch import nn
@@ -28,17 +26,17 @@ def load_checkpoint(filepath):
         model.class_to_idx = checkpoint['class_to_idx']
         return model
     except Exception as e:
-        print("Erreur lors du chargement du modèle :", e)
+        print("Error loading the model:", e)
 
-brand = load_checkpoint('../src/brand.pth')
+brand = load_checkpoint('brand.pth')
 if brand:
     brand.eval()
 
 try:
-    with open('../src/marque.json', 'r') as f:
+    with open('marque.json', 'r') as f:
         class_to_idx = json.load(f)
 except FileNotFoundError as e:
-    print("Erreur lors de l'ouverture du fichier JSON :", e)
+    print("Error opening JSON file :", e)
 else:
     idx_to_class = {idx: class_name for class_name, idx in class_to_idx.items()}
 
@@ -65,7 +63,7 @@ def tansf_image(image):
         image_transformed = image_transformed.unsqueeze(0)
         return image_transformed
     except Exception as e:
-        print("Erreur lors de la transformation de l'image :", e)
+        print("Error during image transformation :", e)
 
 class EuclideanDistTracker:
 
@@ -109,7 +107,7 @@ class EuclideanDistTracker:
             self.center_points = new_center_points.copy()
             return objects_bbs_ids
         except Exception as e:
-            print("Erreur lors de la mise à jour du suivi des objets :", e)
+            print("Error updating object tracking :", e)
 
 def get_color_name(hsv_value):
     """
@@ -125,41 +123,41 @@ def get_color_name(hsv_value):
         h, s, v = hsv_value
 
         if v < 50:
-            return "Noir"
+            return "Black"
         if s < 50:
-            return "Blanc"
+            return "White"
 
         color_ranges = [
-            (0, 15, "Rouge"),
-            (15, 45, "Jaune"),
-            (45, 90, "Vert"),
+            (0, 15, "Red"),
+            (15, 45, "Yellow"),
+            (45, 90, "green"),
             (90, 120, "Cyan"),
-            (120, 150, "Bleu"),
+            (120, 150, "Blue"),
             (150, 165, "Magenta"),
             (0, 10, "Orange"),
-            (10, 20, "Gris"),
+            (10, 20, "Grey"),
         ]
 
         for start, end, color in color_ranges:
             if (start <= h < end) or (165 <= h <= 180 and start == 0):
                 return color
 
-        return "Inconnu"
+        return "Unknown"
     except Exception as e:
-        print("Erreur lors de la détermination de la couleur :", e)
+        print("Error determining color :", e)
 
-def get_color(vehicle_region, v1_min, v2_min, v3_min, v1_max, v2_max, v3_max):
+def get_color(vehicle_region, hue_min, saturation_min, value_min, hue_max, saturation_max, value_max):
     """
     Obtient la couleur dominante d'une région de véhicule.
 
     Args:
         vehicle_region (numpy.ndarray): Région de l'image contenant le véhicule.
-        v1_min (int): Valeur minimale de la première composante HSV.
-        v2_min (int): Valeur minimale de la deuxième composante HSV.
-        v3_min (int): Valeur minimale de la troisième composante HSV.
-        v1_max (int): Valeur maximale de la première composante HSV.
-        v2_max (int): Valeur maximale de la deuxième composante HSV.
-        v3_max (int): Valeur maximale de la troisième composante HSV.
+        hue_min (int): Valeur minimale de la composante de teinte HSV.
+        saturation_min (int): Valeur minimale de la composante de saturation HSV.
+        value_min (int): Valeur minimale de la composante de valeur HSV.
+        hue_max (int): Valeur maximale de la composante de teinte HSV.
+        saturation_max (int): Valeur maximale de la composante de saturation HSV.
+        value_max (int): Valeur maximale de la composante de valeur HSV.
 
     Returns:
         str: Nom de la couleur dominante.
@@ -173,7 +171,7 @@ def get_color(vehicle_region, v1_min, v2_min, v3_min, v1_max, v2_max, v3_max):
         if vehicle_hsv is None or vehicle_hsv.size == 0:
             return None
 
-        mask = cv2.inRange(vehicle_hsv, (v1_min, v2_min, v3_min), (v1_max, v2_max, v3_max))
+        mask = cv2.inRange(vehicle_hsv, (hue_min, saturation_min, value_min), (hue_max, saturation_max, value_max))
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
@@ -191,7 +189,8 @@ def get_color(vehicle_region, v1_min, v2_min, v3_min, v1_max, v2_max, v3_max):
 
         return None
     except Exception as e:
-        print("Erreur lors de la détermination de la couleur du véhicule :", e)
+        print("Error determining vehicle color :", e)
+
 
 def dist_calculator(box_width, img_w):
     """
@@ -210,7 +209,7 @@ def dist_calculator(box_width, img_w):
         distance = (known_width * focal_length) / box_width
         return distance
     except Exception as e:
-        print("Erreur lors du calcul de la distance :", e)
+        print("Error calculating distance :", e)
 
 def find_closest_vehicle(detected_vehicles, img_width):
     """
@@ -240,7 +239,7 @@ def find_closest_vehicle(detected_vehicles, img_width):
 
         return closest_vehicle
     except Exception as e:
-        print("Erreur lors de la recherche du véhicule le plus proche :", e)
+        print("Error finding the nearest vehicle :", e)
 
 def postProcess(outputs, img, colors, classNames, confThreshold, nmsThreshold, required_class_index, tracker):
     """
@@ -295,9 +294,9 @@ def postProcess(outputs, img, colors, classNames, confThreshold, nmsThreshold, r
             classId = closest_vehicle["classId"]
             confidence = closest_vehicle["confidence"]
             vehicle_region = img[y:y+h, x:x+w]
-            v1_min, v2_min, v3_min = 0, 0, 0
-            v1_max, v2_max, v3_max = 255, 255, 255
-            vehicle_color = get_color(vehicle_region, v1_min, v2_min, v3_min, v1_max, v2_max, v3_max)
+            hue_min, saturation_min, value_min = 0, 0, 0
+            hue_max, saturation_max, value_max = 255, 255, 255
+            vehicle_color = get_color(vehicle_region, hue_min, saturation_min, value_min, hue_max, saturation_max, value_max)
             name = classNames[classId]
             imgtr= tansf_image(vehicle_region)
             with torch.no_grad():
@@ -318,4 +317,5 @@ def postProcess(outputs, img, colors, classNames, confThreshold, nmsThreshold, r
 
         return None
     except Exception as e:
-        print("Erreur lors du post-traitement des résultats :", e)
+        print("Error during post-processing of results :", e)
+
