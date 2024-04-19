@@ -119,7 +119,7 @@ def on_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload.decode())
         if 'video_name' in data:
-            video_name = data['video_name']
+            video_name = os.path.splitext(data['video_name'])[0]
             if csv_file:
                 csv_file.close()
             create_csv_file(video_name)
