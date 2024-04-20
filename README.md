@@ -1,4 +1,20 @@
-# Car detect and classify project 
+
+# Car detection and classification one shot
+
+# TO_DO List:
+- [x] Test d'integration
+- [x] Dashboard
+- [x] Diagrammes&flowcharts
+- [X] Code coverage
 
 
-First version of stable code
+# How to use sphinx doc:
+
+## To run Sphinx:
+    $ pip install sphinx
+    $ mkdir docs && cd docs
+    $ sphinx-quickstart
+    $ ./make.bat html 
+
+## To run Sphinx code coverage:
+    $ pytest --cov=.
