@@ -1,3 +1,4 @@
+
 # Car detection and classification one shot
 
 # TO_DO List:
@@ -17,5 +18,3 @@
 
 ## To run Sphinx code coverage:
     $ pytest --cov=.
-
-..
